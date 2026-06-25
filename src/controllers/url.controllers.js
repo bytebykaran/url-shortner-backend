@@ -3,12 +3,17 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { generateShortCode } from "../utils/generateShortCode.js";
+import { isValidUrl } from "../utils/isValidUrl.js";
 
 const createShortUrl = asyncHandler(async (req, res) => {
   const { originalUrl } = req.body;
-  
+
   if (!originalUrl) {
     throw new ApiError(400, "original Url is required");
+  }
+
+  if (!isValidUrl(originalUrl)) {
+    throw new ApiError(400, "Invalid URL format");
   }
 
   const shortCode = generateShortCode();
@@ -17,13 +22,13 @@ const createShortUrl = asyncHandler(async (req, res) => {
     shortCode,
   });
 
-  const shorturl = `${req.protocol}://${req.headers.host}/${shortCode}`;
+  const shortUrl = `${req.protocol}://${req.headers.host}/${shortCode}`;
   return res
     .status(201)
     .json(
       new ApiResponse(
         201,
-        { originalUrl: url.originalUrl, shortCode: url.shortCode, shorturl },
+        { originalUrl: url.originalUrl, shortCode: url.shortCode, shortUrl },
         "Short Url created successfully",
       ),
     );
@@ -33,7 +38,7 @@ const redirectToOriginalUrl = asyncHandler(async (req, res) => {
   const { shortCode } = req.params;
 
   const url = await Url.findOneAndUpdate(
-    { shortCode },
+    { shortCode, isActive: true },
     {
       $inc: {
         clicks: 1,
@@ -43,9 +48,34 @@ const redirectToOriginalUrl = asyncHandler(async (req, res) => {
       returnDocument: "after",
     },
   );
-  if(!url){
-    throw new ApiError(404,"short url no found")
+  if (!url) {
+    throw new ApiError(404, "short url no found or inactive");
   }
   return res.redirect(url.originalUrl);
 });
-export { createShortUrl, redirectToOriginalUrl };
+
+const getUrlStats = asyncHandler(async (req, res) => {
+  const { shortCode } = req.params;
+  const url = await Url.findOne({ shortCode });
+  if (!url) {
+    throw new ApiError(404, "Url not found or inactive");
+  }
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        originalUrl: url.originalUrl,
+        shortCode: url.shortCode,
+        shortUrl: `${req.protocol}://${req.host}/${url.shortCode}`,
+        clicks: url.clicks,
+        isActive: url.isActive,
+        createdAt: url.createdAt,
+        updatedAt: url.updatedAt,
+      },
+      "Url stats fetched successfully",
+    ),
+  );
+});
+
+export { createShortUrl, redirectToOriginalUrl,getUrlStats };

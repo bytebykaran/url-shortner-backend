@@ -6,13 +6,13 @@ const urlSchema = new Schema(
       type: String,
       required: true,
       trim: true,
-      index:true
+      index: true,
     },
     shortCode: {
       type: String,
       required: true,
       unique: true,
-      index:true,
+      index: true,
       default: () => {
         nanoid(6);
       },
@@ -21,8 +21,13 @@ const urlSchema = new Schema(
       type: Number,
       default: 0,
     },
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
   },
+
   { timestamps: true },
 );
 
-export const Url=mongoose.model("Url",urlSchema)
+export const Url = mongoose.model("Url", urlSchema);
