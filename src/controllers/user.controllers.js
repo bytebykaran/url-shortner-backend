@@ -2,6 +2,7 @@ import { User } from "../models/user.models.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import jwt from "jsonwebtoken"
 
 const registerUser = asyncHandler(async (req, res) => {
   const { userName, email, fullName, password } = req.body;
@@ -12,7 +13,7 @@ const registerUser = asyncHandler(async (req, res) => {
   }
 
   const existingUser = await User.findOne({
-    $or: [{ email, userName }],
+    $or: [{ email }, { userName }],
   });
 
   if (existingUser) {
@@ -20,7 +21,7 @@ const registerUser = asyncHandler(async (req, res) => {
   }
 
   const user = await User.create({
-    userName,
+    userName:userName,
     email,
     fullName,
     password,
@@ -50,19 +51,21 @@ const loginUser = asyncHandler(async (req, res) => {
   }
 
   const user = await User.findOne({
-    $or: [{ userName, email }],
+    $or: [{ userName }, { email }],
   });
 
   if (!user) {
     throw new ApiError(404, "user not found");
   }
-
+  //testing
+  console.log(password);
+  console.log(user);
   const isPasswordValid = await user.isPasswordCorrect(password);
   if (!isPasswordValid) {
     throw new ApiError(401, "Invalid credentials");
   }
-  const accessToken = user.generateAccessToken();
-  const refreshToken = user.generateRefreshToken();
+  const accessToken =await  user.generateAccessToken();
+  const refreshToken =await  user.generateRefreshToken();
   user.refreshToken = refreshToken;
   await user.save({
     validateBeforeSave: false,
@@ -172,4 +175,10 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
       ),
     );
 });
-export { registerUser, loginUser, logoutUser, getCurrentUser,refreshAccessToken };
+export {
+  registerUser,
+  loginUser,
+  logoutUser,
+  getCurrentUser,
+  refreshAccessToken,
+};

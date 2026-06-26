@@ -8,10 +8,10 @@ import {
 } from "../controllers/user.controllers.js";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
 const router = Router();
-router.post("/", registerUser);
-router.get("/login", loginUser);
-router.get("/logout",verifyJWT,logoutUser)
+router.post("/register", registerUser);
+router.post("/login", loginUser);
+router.post("/logout",verifyJWT,logoutUser)
 router.get("/me",verifyJWT,getCurrentUser)
-router.get("/refresh-token",refreshAccessToken)
+router.post("/refresh-token",refreshAccessToken)
 
 export default router;
