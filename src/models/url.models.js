@@ -25,6 +25,11 @@ const urlSchema = new Schema(
       type: Boolean,
       default: true,
     },
+    createdBy:{
+      type:Schema.Types.ObjectId,
+      ref:"User",
+      required:true
+    }
   },
 
   { timestamps: true },

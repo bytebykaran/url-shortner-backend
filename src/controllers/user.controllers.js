@@ -2,8 +2,12 @@ import { User } from "../models/user.models.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
-import jwt from "jsonwebtoken"
-import { uploadOnCloudinary } from "../utils/cloudinary.js";
+import jwt from "jsonwebtoken";
+import {
+  destroyOnCloudinary,
+  uploadOnCloudinary,
+} from "../utils/cloudinary.js";
+import mongoose, { isValidObjectId } from "mongoose";
 
 const registerUser = asyncHandler(async (req, res) => {
   const { userName, email, fullName, password } = req.body;
@@ -21,16 +25,21 @@ const registerUser = asyncHandler(async (req, res) => {
     throw new ApiError(409, "User with this email or username already exist");
   }
 
-  const profileImageLocalPath=req.file?.path
-  const profileImage=profileImageLocalPath ? await uploadOnCloudinary(profileImageLocalPath,"url-shortener/profile-images"):null
+  const profileImageLocalPath = req.file?.path;
+  const profileImage = profileImageLocalPath
+    ? await uploadOnCloudinary(
+        profileImageLocalPath,
+        "url-shortener/profile-images",
+      )
+    : null;
 
   const user = await User.create({
-    userName:userName,
+    userName: userName,
     email,
     fullName,
     password,
-    profileImage:profileImage.secure_url,
-    profileImagePublicId:profileImage.public_id
+    profileImage: profileImage.secure_url,
+    profileImagePublicId: profileImage.public_id,
   });
 
   const createdUser = await User.findById(user._id).select(
@@ -70,8 +79,8 @@ const loginUser = asyncHandler(async (req, res) => {
   if (!isPasswordValid) {
     throw new ApiError(401, "Invalid credentials");
   }
-  const accessToken =await  user.generateAccessToken();
-  const refreshToken =await  user.generateRefreshToken();
+  const accessToken = await user.generateAccessToken();
+  const refreshToken = await user.generateRefreshToken();
   user.refreshToken = refreshToken;
   await user.save({
     validateBeforeSave: false,
@@ -181,10 +190,47 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
       ),
     );
 });
+
+const updateprofileImage = asyncHandler(async (req, res) => {
+  const profileImageLocalPath = req.file.path;
+  if (!profileImageLocalPath) {
+    throw new ApiError(400, "profileImage file is requierd");
+  }
+  const profileImage = await uploadOnCloudinary(
+    profileImageLocalPath,
+    "url-shortener/profile-images",
+  );
+  const userToUpdate = await User.findById(req.user._id);
+  if (!userToUpdate) {
+    throw new ApiError(404, "User not found");
+  }
+
+  if (userToUpdate.profileImagePublicId) {
+    await destroyOnCloudinary(userToUpdate.profileImagePublicId);
+  }
+
+  const updateduser = await User.findByIdAndUpdate(
+    req.user._id,
+    {
+      $set: {
+        profileImage: profileImage.secure_url,
+        profileImagePublicId: profileImage.public_id,
+      },
+    },
+    {
+      returnDocument: "after",
+    },
+  ).select("-password -refreshToken");
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, updateduser, "profile image updated successfully"));
+});
 export {
   registerUser,
   loginUser,
   logoutUser,
   getCurrentUser,
   refreshAccessToken,
+  updateprofileImage
 };

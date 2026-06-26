@@ -20,6 +20,7 @@ const createShortUrl = asyncHandler(async (req, res) => {
   const url = await Url.create({
     originalUrl,
     shortCode,
+    createdBy: req.user._id,
   });
 
   const shortUrl = `${req.protocol}://${req.headers.host}/${shortCode}`;
@@ -56,7 +57,7 @@ const redirectToOriginalUrl = asyncHandler(async (req, res) => {
 
 const getUrlStats = asyncHandler(async (req, res) => {
   const { shortCode } = req.params;
-  const url = await Url.findOne({ shortCode });
+  const url = await Url.findOne({ shortCode, createdBy: req.user._id });
   if (!url) {
     throw new ApiError(404, "Url not found or inactive");
   }
@@ -70,6 +71,7 @@ const getUrlStats = asyncHandler(async (req, res) => {
         shortUrl: `${req.protocol}://${req.host}/${url.shortCode}`,
         clicks: url.clicks,
         isActive: url.isActive,
+        createdBy: url.createdBy,
         createdAt: url.createdAt,
         updatedAt: url.updatedAt,
       },
@@ -78,4 +80,51 @@ const getUrlStats = asyncHandler(async (req, res) => {
   );
 });
 
-export { createShortUrl, redirectToOriginalUrl,getUrlStats };
+const getMyUrls = asyncHandler(async (req, res) => {
+  const userId = req.user?._id;
+  if (!isValidObjectId(userId)) {
+    throw new ApiError(400, "Invalid user id");
+  }
+
+  const urls = await Url.find({
+    createdBy: req.user?._id,
+  }).sort({ createdAt: -1 });
+
+  if (!user) {
+    throw new ApiError(404, "No url for this owner");
+  }
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, urls, "All urls fetched successfully"));
+});
+
+const deactivateUrl = asyncHandler(async (req, res) => {
+  const { shortCode } = req.params;
+  const url = await Url.findOneAndUpdate(
+    { shortCode, createdBy: req.user?._id },
+    {
+      $set:{
+        isActive:false
+      }
+    },
+    {
+      returnDocument: "after",
+    },
+  );
+
+  if (!url) {
+    throw new ApiError(404, "Url not found");
+  }
+
+  return res
+  .status(200)
+  .json(new ApiResponse(200, {}, "Url deleted successfully"))
+})
+export {
+  createShortUrl,
+  redirectToOriginalUrl,
+  getUrlStats,
+  getMyUrls,
+  deactivateUrl,
+};
