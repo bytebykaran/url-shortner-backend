@@ -4,12 +4,13 @@ import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { generateShortCode } from "../utils/generateShortCode.js";
 import { isValidUrl } from "../utils/isValidUrl.js";
+import { isValidCustomCode } from "../utils/isValidCustomCode.js";
 
 import { Analytics } from "../models/analytics.models.js";
 import { UAParser } from "ua-parser-js";
 
 const createShortUrl = asyncHandler(async (req, res) => {
-  const { originalUrl } = req.body;
+  const { originalUrl, customCode, expiresAt } = req.body;
 
   if (!originalUrl) {
     throw new ApiError(400, "original Url is required");
@@ -19,10 +20,44 @@ const createShortUrl = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Invalid URL format");
   }
 
-  const shortCode = generateShortCode();
+  // const shortCode = generateShortCode();
+  let shortCode;
+  let isCustomAlias = false;
+  if (customCode) {
+    if (!isValidCustomCode(customCode)) {
+      throw new ApiError(
+        400,
+        "Custom alias must be 3-30 characters and can contain letters, numbers, _ or -",
+      );
+    }
+    const existingCode = await Url.findOne({ shortCode: customCode });
+    if (existingCode) {
+      throw new ApiError(409, "Custom alias already exist");
+    }
+    shortCode = customCode;
+    isCustomAlias = true;
+  } else {
+    shortCode = generateShortCode();
+  }
+
+  //expiry date
+
+  let expiryDate = null;
+  if (expiresAt) {
+    expiryDate = new Date(expiresAt); // string to Date object
+    if (isNaN(expiryDate.getTime())) {
+      throw new ApiError(400, "Invalid expiry date");
+    }
+    if (expiryDate <= new Date()) {
+      throw new ApiError(400, "Expiry date must be in the future");
+    }
+  }
+
   const url = await Url.create({
     originalUrl,
     shortCode,
+    customAlias: isCustomAlias,
+    expiresAt: expiryDate,
     createdBy: req.user._id,
   });
 
@@ -41,41 +76,36 @@ const createShortUrl = asyncHandler(async (req, res) => {
 const redirectToOriginalUrl = asyncHandler(async (req, res) => {
   const { shortCode } = req.params;
 
-  const url = await Url.findOneAndUpdate(
-    { shortCode, isActive: true },
-    {
-      $inc: {
-        clicks: 1,
-      },
-    },
-    {
-      returnDocument: "after",
-    },
-  );
+  const url = await Url.findOne({ shortCode, isActive: true });
   if (!url) {
     throw new ApiError(404, "short url no found or inactive");
   }
 
+  if (url.expiresAt && url.expiresAt <= new Date()) {
+    throw new ApiError(410, "Short URL has expired");
+  }
+  url.clicks++;
+  await url.save()
   // analytics features
 
-  const userAgent=req.get("User-Agent")
-  const parser=new UAParser(userAgent)
+  const userAgent = req.get("User-Agent");
+  const parser = new UAParser(userAgent);
   // testing
   // console.log(parser.getResult())
-  
-  const uaResult=parser.getResult()
+
+  const uaResult = parser.getResult();
 
   // alalytics creation
   await Analytics.create({
-    url:url._id,
-    clickedByIp:req.ip,
+    url: url._id,
+    clickedByIp: req.ip,
     userAgent,
-    referrer:req.get("Referer"),
-    browser:uaResult.browser.name,
-    os:uaResult.os.name,
-    device:uaResult.device.type,
-  })
-  return res.redirect(302,url.originalUrl);
+    referrer: req.get("Referer"),
+    browser: uaResult.browser.name,
+    os: uaResult.os.name,
+    device: uaResult.device.type,
+  });
+  return res.redirect(302, url.originalUrl);
 });
 
 const getUrlStats = asyncHandler(async (req, res) => {
@@ -95,6 +125,9 @@ const getUrlStats = asyncHandler(async (req, res) => {
         clicks: url.clicks,
         isActive: url.isActive,
         createdBy: url.createdBy,
+        customAlias:url.customAlias,
+        expiresAt:url.expiresAt,
+        isExpired:url.expiresAt ? url.expiresAt <=new Date() : false,
         createdAt: url.createdAt,
         updatedAt: url.updatedAt,
       },

@@ -62,6 +62,18 @@ const getUrlAnalytics = asyncHandler(async (req, res) => {
             $divide: [{ $size: "$allAnalytics" }, limit],
           },
         },
+        isExpired: {
+          $cond: [
+            {
+              $and: [
+                { $ne: ["$expiresAt", null] },
+                { $lte: ["$expiresAt", new Date()] },
+              ],
+            },
+            true,
+            false,
+          ],
+        },
       },
     },
     {
@@ -69,6 +81,8 @@ const getUrlAnalytics = asyncHandler(async (req, res) => {
         shortCode: 1,
         originalUrl: 1,
         totalClicks: "$clicks",
+        isActive: 1,
+        expiresAt: 1,
         totalAnalytics: 1,
         totalPages: 1,
         analytics: 1,
@@ -77,8 +91,8 @@ const getUrlAnalytics = asyncHandler(async (req, res) => {
   ]);
 
   return res
-  .status(200)
-  .json(new ApiResponse(200,analytics[0],"Anlytics fetches successfully"))
+    .status(200)
+    .json(new ApiResponse(200, analytics[0], "Anlytics fetches successfully"));
 });
 
 export { getUrlAnalytics };

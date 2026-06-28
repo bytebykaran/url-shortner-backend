@@ -13,9 +13,14 @@ const urlSchema = new Schema(
       required: true,
       unique: true,
       index: true,
-      default: () => {
-        nanoid(6);
-      },
+    },
+    customAlias:{
+      type:Boolean,
+      default:false
+    },
+    expiresAt:{
+      type:Date,
+      default:null
     },
     clicks: {
       type: Number,
