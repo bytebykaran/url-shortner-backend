@@ -4,7 +4,7 @@ import cookieParser from "cookie-parser";
 import { errorHandler } from "./middlewares/error.middleware.js";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
-
+import morgan from "morgan";
 const app = express();
 
 const limiter = rateLimit({
@@ -23,6 +23,9 @@ app.use(
   }),
 );
 
+if(process.env.NODE_ENV === "development") {
+  app.use(morgan("dev"));
+}
 app.use(cookieParser());
 app.use(
   express.json({
