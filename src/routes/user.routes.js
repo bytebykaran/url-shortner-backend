@@ -7,7 +7,7 @@ import {
   refreshAccessToken,
   updateprofileImage,
   updateProfile,
-  changeCurrentPassword
+  changeCurrentPassword,
 } from "../controllers/user.controllers.js";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
 import upload from "../middlewares/multer.middleware.js";
@@ -25,5 +25,4 @@ router.patch(
 );
 router.post("/change-password",verifyJWT,changeCurrentPassword)
 router.patch("/update-account",verifyJWT,updateProfile)
-
 export default router;

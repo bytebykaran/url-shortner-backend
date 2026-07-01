@@ -9,6 +9,8 @@ import {
 } from "../utils/cloudinary.js";
 import mongoose, { isValidObjectId } from "mongoose";
 
+import redisClient from "../config/redis.js";
+
 const registerUser = asyncHandler(async (req, res) => {
   const { userName, email, fullName, password } = req.body;
   if (
@@ -300,6 +302,7 @@ const changeCurrentPassword = asyncHandler(async (req, res) => {
     .status(200)
     .json(new ApiResponse(200, {}, "Password changed successfully"));
 });
+
 export {
   registerUser,
   loginUser,

@@ -9,6 +9,8 @@ import { isValidCustomCode } from "../utils/isValidCustomCode.js";
 import { Analytics } from "../models/analytics.models.js";
 import { UAParser } from "ua-parser-js";
 
+import redisClient from "../config/redis.js";
+
 const createShortUrl = asyncHandler(async (req, res) => {
   const { originalUrl, customCode, expiresAt } = req.body;
 
@@ -75,36 +77,77 @@ const createShortUrl = asyncHandler(async (req, res) => {
 const redirectToOriginalUrl = asyncHandler(async (req, res) => {
   const { shortCode } = req.params;
 
-  const url = await Url.findOne({ shortCode, isActive: true });
-  if (!url) {
-    throw new ApiError(404, "short url no found or inactive");
+  // caching redirected urls for performance improvement
+  const cachedUrl = await redisClient.get(`url:${shortCode}`);
+
+  if (cachedUrl) {
+    const urlData = JSON.parse(cachedUrl);
+    if (urlData.expiresAt && new Date(urlData.expiresAt) <= new Date()) {
+      throw new ApiError(410, "Short URL has expired");
+    }
+
+    await Url.updateOne({ shortCode }, { $inc: { clicks: 1 } });
+
+    const userAgent = req.get("User-Agent");
+    const parser = new UAParser(userAgent);
+    const uaResult = parser.getResult();
+    await Analytics.create({
+      url: urlData._id,
+      clickedByIp: req.ip,
+      userAgent,
+      referrer: req.get("Referer"),
+      browser: uaResult.browser.name,
+      os: uaResult.os.name,
+      device: uaResult.device.type,
+    });
+    console.log("Redirecting to original URL:", urlData.originalUrl);
+    return res.redirect(302, urlData.originalUrl);
+  } else {
+    const url = await Url.findOne({ shortCode, isActive: true });
+
+    if (!url) {
+      throw new ApiError(404, "short url no found or inactive");
+    }
+
+    if (url.expiresAt && url.expiresAt <= new Date()) {
+      throw new ApiError(410, "Short URL has expired");
+    }
+
+    // stringify the url object and store it in redis with an expiration time
+    const result = await redisClient.set(
+      `url:${shortCode}`,
+      JSON.stringify({
+        _id: url._id,
+        originalUrl: url.originalUrl,
+        expiresAt: url.expiresAt,
+      }),
+      {
+        EX: 60 * 60, // cache for a hour
+      },
+    );
+
+    await Url.updateOne({ shortCode }, { $inc: { clicks: 1 } });
+    // analytics features
+
+    const userAgent = req.get("User-Agent");
+    const parser = new UAParser(userAgent);
+    // testing
+    // console.log(parser.getResult())
+
+    const uaResult = parser.getResult();
+
+    // alalytics creation
+    await Analytics.create({
+      url: url._id,
+      clickedByIp: req.ip,
+      userAgent,
+      referrer: req.get("Referer"),
+      browser: uaResult.browser.name,
+      os: uaResult.os.name,
+      device: uaResult.device.type,
+    });
+    return res.redirect(302, url.originalUrl);
   }
-
-  if (url.expiresAt && url.expiresAt <= new Date()) {
-    throw new ApiError(410, "Short URL has expired");
-  }
-  url.clicks++;
-  await url.save()
-  // analytics features
-
-  const userAgent = req.get("User-Agent");
-  const parser = new UAParser(userAgent);
-  // testing
-  // console.log(parser.getResult())
-
-  const uaResult = parser.getResult();
-
-  // alalytics creation
-  await Analytics.create({
-    url: url._id,
-    clickedByIp: req.ip,
-    userAgent,
-    referrer: req.get("Referer"),
-    browser: uaResult.browser.name,
-    os: uaResult.os.name,
-    device: uaResult.device.type,
-  });
-  return res.redirect(302, url.originalUrl);
 });
 
 const getUrlStats = asyncHandler(async (req, res) => {
@@ -124,9 +167,9 @@ const getUrlStats = asyncHandler(async (req, res) => {
         clicks: url.clicks,
         isActive: url.isActive,
         createdBy: url.createdBy,
-        customAlias:url.customAlias,
-        expiresAt:url.expiresAt,
-        isExpired:url.expiresAt ? url.expiresAt <=new Date() : false,
+        customAlias: url.customAlias,
+        expiresAt: url.expiresAt,
+        isExpired: url.expiresAt ? url.expiresAt <= new Date() : false,
         createdAt: url.createdAt,
         updatedAt: url.updatedAt,
       },
@@ -145,8 +188,8 @@ const getMyUrls = asyncHandler(async (req, res) => {
     createdBy: req.user?._id,
   }).sort({ createdAt: -1 });
 
-  if (!user) {
-    throw new ApiError(404, "No url for this owner");
+  if (!urls.length) {
+    throw new ApiError(404, "No urls for this owner");
   }
 
   return res
